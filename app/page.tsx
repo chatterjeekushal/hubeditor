@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useCallback } from "react";
 import { EditorProvider, useEditor } from "../lib/EditorContext";
 import ContextMenuProvider from "../providers/ContextMenuProvider";
 import Toolbar from "../components/editor/Toolbar";
@@ -11,24 +11,62 @@ import StatusBar from "../components/editor/StatusBar";
 import TerminalPanel from "../components/panels/TerminalPanel";
 import SearchPanel from "../components/panels/SearchPanel";
 import { FileItem } from "../types/editor";
+import { useFileWatcher } from "@/hook/useFileWatcher";
 
 function EditorLayout() {
+
+
+
+
   const { activeFile, setActiveFile, saveFile, files, setFiles, panels } = useEditor();
+
+  const refreshFiles = useCallback(async (changeData?: { event: string; path: string }) => {
+    try {
+      // Always use functional updates for state
+      if (changeData?.event === 'unlink' || changeData?.event === 'unlinkDir') {
+        setFiles(prev => prev.filter(file => !file.path.startsWith(changeData.path)));
+        return;
+      }
+
+      if (changeData?.event === 'change') {
+        try {
+          const response = await fetch(`/api/files?path=${encodeURIComponent(changeData.path)}`);
+          const updatedFile = await response.json();
+          setFiles(prev => prev.map(file => file.path === changeData.path ? updatedFile : file));
+          return;
+        } catch (error) {
+          console.error("Failed to update single file:", error);
+        }
+      }
+
+      // Fallback to full refresh
+      const response = await fetch('/api/files');
+      const data = await response.json();
+      setFiles(data);
+    } catch (error) {
+      console.error("Error in refreshFiles:", error);
+    }
+  }, [setFiles]);
+
+  // Initialize file watcher
+  useFileWatcher(refreshFiles);
+
+  // Initial load
+  useEffect(() => {
+    refreshFiles();
+  }, [refreshFiles]);
+
+
+
+
+
+  // Use the file watcher hook with the enhanced refresh
+  useFileWatcher(refreshFiles);
 
   // Fetch workspace files on load
   useEffect(() => {
-    async function loadFiles() {
-      try {
-        const res = await fetch("/api/files");
-        if (!res.ok) throw new Error("Failed to load files");
-        const data: FileItem[] = await res.json();
-        setFiles(data);
-      } catch (err) {
-        console.error("Error loading files:", err);
-      }
-    }
-    loadFiles();
-  }, [setFiles]);
+    refreshFiles();
+  }, [refreshFiles]);
 
   const handleContentChange = (content: string) => {
     if (activeFile) {
@@ -71,16 +109,6 @@ function EditorLayout() {
       default:
         console.log("Code execution for", language, ":", content);
         break;
-    }
-  };
-
-  const refreshFiles = async () => {
-    try {
-      const response = await fetch('/api/files');
-      const data = await response.json();
-      setFiles(data);
-    } catch (error) {
-      console.error("Error refreshing files:", error);
     }
   };
 

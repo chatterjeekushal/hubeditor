@@ -1,6 +1,8 @@
+
+// lib/EditorContext.ts
 "use client";
 
-import { createContext, useContext, useState, ReactNode } from 'react';
+import { createContext, useContext, useState, ReactNode, useCallback } from 'react';
 import { EditorPanels, FileItem, CursorPosition } from '../types/editor';
 import ContextMenuProvider from '@/providers/ContextMenuProvider';
 
@@ -12,9 +14,9 @@ interface EditorProviderProps {
 
 export interface EditorContextType {
     activeFile: FileItem | null;
-    setActiveFile: (file: FileItem | null) => void; // ✅ added
+    setActiveFile: (file: FileItem | null) => void;
     files: FileItem[];
-    setFiles: (files: FileItem[]) => void;          // ✅ added
+    setFiles: (files: FileItem[] | ((prevFiles: FileItem[]) => FileItem[])) => void;
     isDirty: boolean;
     cursorPosition: CursorPosition;
     panels: EditorPanels;
@@ -32,10 +34,9 @@ export interface EditorContextType {
     gitBranch: string;
 }
 
-
 export function EditorProvider({ children }: EditorProviderProps) {
     const [activeFile, setActiveFile] = useState<FileItem | null>(null);
-    const [files, setFiles] = useState<FileItem[]>([]);
+    const [files, _setFiles] = useState<FileItem[]>([]);
     const [isDirty, setIsDirty] = useState<boolean>(false);
     const [cursorPosition, setCursorPosition] = useState<CursorPosition>({ line: 1, column: 1 });
     const [panels, setPanels] = useState<EditorPanels>({
@@ -45,9 +46,20 @@ export function EditorProvider({ children }: EditorProviderProps) {
         debug: false,
     });
 
+    // Enhanced setFiles that handles both values and updater functions
+    const setFiles = useCallback(
+        (update: FileItem[] | ((prevFiles: FileItem[]) => FileItem[])) => {
+            if (typeof update === 'function') {
+                _setFiles(prev => update(prev));
+            } else {
+                _setFiles(update);
+            }
+        },
+        []
+    );
+
     const saveFile = (content?: string) => {
         if (!activeFile) return;
-        // Save logic here
         if (content !== undefined) {
             setActiveFile(prev => prev ? { ...prev, content } : null);
         }
@@ -78,9 +90,9 @@ export function EditorProvider({ children }: EditorProviderProps) {
 
     const value: EditorContextType = {
         activeFile,
-        setActiveFile, // ✅ added
+        setActiveFile,
         files,
-        setFiles,      // ✅ added
+        setFiles,
         isDirty,
         cursorPosition,
         panels,
