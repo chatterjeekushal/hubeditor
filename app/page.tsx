@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { EditorProvider, useEditor } from "../lib/EditorContext";
 import ContextMenuProvider from "../providers/ContextMenuProvider";
 import Toolbar from "../components/editor/Toolbar";
@@ -12,12 +12,6 @@ import TerminalPanel from "../components/panels/TerminalPanel";
 import SearchPanel from "../components/panels/SearchPanel";
 import { FileItem } from "../types/editor";
 
-
-export interface FileExplorerProps {
-  files: FileItem[]; // ✅ list of files
-  onFileSelect: (file: FileItem) => void; // ✅ callback when selecting a file
-  onNewFile: () => void; // ✅ callback to create a new file
-}
 function EditorLayout() {
   const { activeFile, setActiveFile, saveFile, files, setFiles, panels } = useEditor();
 
@@ -80,7 +74,15 @@ function EditorLayout() {
     }
   };
 
-
+  const refreshFiles = async () => {
+    try {
+      const response = await fetch('/api/files');
+      const data = await response.json();
+      setFiles(data);
+    } catch (error) {
+      console.error("Error refreshing files:", error);
+    }
+  };
 
   return (
     <div className="h-screen flex flex-col bg-gray-900">
@@ -90,13 +92,14 @@ function EditorLayout() {
       {/* Main Content Area */}
       <div className="flex-1 flex">
         {/* File Explorer Sidebar */}
-        <FileExplorer
-          files={files}
-          onFileSelect={handleFileSelect}
-          onNewFile={() => setActiveFile(null)} // Clear active file for new file creation
-        />
         <div className="w-64 border-r border-gray-700">
-
+          <FileExplorer
+            files={files}
+            onFileSelect={handleFileSelect}
+            onNewFile={() => setActiveFile(null)}
+            onDeleteFile={() => setActiveFile(null)}
+            onRefresh={refreshFiles}
+          />
         </div>
 
         {/* Editor Area */}
