@@ -4,20 +4,16 @@ import { exec } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 
-
 interface FileNode {
     name: string;
     type: 'file' | 'folder';
     children?: FileNode[];
 }
 
-
 const workspaceDir = path.join(process.cwd(), 'user_workspace');
 if (!fs.existsSync(workspaceDir)) {
     fs.mkdirSync(workspaceDir, { recursive: true });
 }
-
-
 
 function execCommand(command: string, cwd: string): Promise<{ stdout: string; stderr: string; code: number | null }> {
     return new Promise((resolve) => {
@@ -48,12 +44,23 @@ function getDirectoryTree(dirPath: string): FileNode[] {
         }
     });
 }
+
 export async function POST(req: NextRequest) {
     try {
         const { command, cwd = '' } = await req.json();
 
         if (!command || typeof command !== 'string') {
             return NextResponse.json({ error: 'No command provided' }, { status: 400 });
+        }
+
+        // Handle custom clear screen command
+        if (command.trim().toLowerCase() === 'cls') {
+            return NextResponse.json({
+                stdout: '__CLEAR_SCREEN__', // Special marker for frontend
+                stderr: '',
+                code: 0,
+                workspaceTree: getDirectoryTree(workspaceDir)
+            });
         }
 
         // Sanitize cwd - prevent directory traversal outside workspace

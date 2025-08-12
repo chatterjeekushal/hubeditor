@@ -7,7 +7,6 @@ import 'xterm/css/xterm.css';
 const HOME = '~'; // represent workspaceDir root as ~
 
 function normalizePath(path: string) {
-    // Remove double slashes, handle trailing slash
     return path.replace(/\/+/g, '/').replace(/\/$/, '') || '/';
 }
 
@@ -27,7 +26,6 @@ export default function TerminalPanel() {
         term.current = terminal;
         terminal.open(terminalRef.current!);
 
-        // Show prompt with current path like: user@devsphere:~/folder$
         const prompt = () => {
             terminal.write(`\r\nuser@devsphere:${currentPath}$ `);
             commandBuffer.current = '';
@@ -37,11 +35,9 @@ export default function TerminalPanel() {
             terminalRef.current?.scrollTo(0, terminalRef.current.scrollHeight);
         };
 
-        // Resolve new path for cd command on client side
         const resolvePath = (cwd: string, target: string): string => {
             if (target === '') return cwd;
             if (target.startsWith('/')) {
-                // Absolute path relative to workspace root
                 return normalizePath(target === '/' ? HOME : target.replace(/^~?/, ''));
             } else if (target === '~') {
                 return HOME;
@@ -56,11 +52,10 @@ export default function TerminalPanel() {
             }
         };
 
-        // Run command by sending to backend API
         const executeCommand = async (inputCommand: string) => {
             const trimmedCmd = inputCommand.trim();
 
-            // Handle 'cd' locally to update currentPath
+            // Handle 'cd' locally
             if (trimmedCmd.startsWith('cd ')) {
                 const targetDir = trimmedCmd.slice(3).trim();
                 const newPath = resolvePath(currentPath, targetDir);
@@ -73,7 +68,6 @@ export default function TerminalPanel() {
             terminal.write(`\r\nRunning: ${inputCommand}\r\n`);
 
             try {
-                // Send command + currentPath to backend
                 const res = await fetch('/api/terminal', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -81,6 +75,14 @@ export default function TerminalPanel() {
                 });
 
                 const data = await res.json();
+
+                // ✅ Detect clear-screen marker from backend
+                if (data.stdout === '__CLEAR_SCREEN__') {
+                    terminal.clear(); // completely wipe screen & history
+                    prompt();
+                    scrollToBottom();
+                    return;
+                }
 
                 if (data.stdout) terminal.write(data.stdout.replace(/\n/g, '\r\n'));
                 if (data.stderr) terminal.write(data.stderr.replace(/\n/g, '\r\n'));
@@ -125,5 +127,5 @@ export default function TerminalPanel() {
         };
     }, [currentPath]);
 
-    return <div ref={terminalRef} style={{ height: '100px', width: '100%', }} />;
+    return <div ref={terminalRef} style={{ height: '100px', width: '100%', zIndex: 6 }} />;
 }
