@@ -26,7 +26,7 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html>
+    <html className="geist_e531dabc-module__QGiZLq__variable geist_mono_68a01160-module__YLcDdW__variable">
       <body>
         <EditorProvider>
           <ContextMenuProvider>

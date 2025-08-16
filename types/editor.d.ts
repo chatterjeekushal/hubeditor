@@ -90,3 +90,14 @@ export interface EditorPanels {
     git: boolean;
     debug: boolean;
 }
+
+export type TabType = 'file' | 'terminal';
+
+export interface TabItem {
+    id: string;
+    name: string;
+    type: TabType;
+    content?: string; // For file tabs
+    path?: string;    // For file paths
+    // Add terminal-specific props if needed
+}
