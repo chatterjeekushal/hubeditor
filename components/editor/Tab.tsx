@@ -3,7 +3,7 @@
 
 import { FiX } from "react-icons/fi";
 import { FileItem } from "@/types/editor";
-
+import TerminalPanel from "@/components/panels/TerminalPanel";
 interface TabsProps {
     tabs: FileItem[];
     activeTab: string | null;
@@ -31,6 +31,7 @@ export default function Tabs({ tabs, activeTab, onTabClick, onTabClose }: TabsPr
                     />
                 </div>
             ))}
+            <TerminalPanel />
         </div>
     );
 }
