@@ -1,38 +1,38 @@
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useRef } from 'react';
 import Editor, { Monaco } from '@monaco-editor/react';
 import { FileItem } from '../../types/editor';
-import { ContextMenu, MenuItem, MenuSeparator, SubMenu } from '../ui/ContextMenu';
+import { ContextMenu, MenuItem, MenuSeparator } from '../ui/ContextMenu';
 import { FiX } from 'react-icons/fi';
 
 interface EditorPaneProps {
     file: FileItem | null;
     onSave: (content: string) => void;
     onContentChange: (content: string) => void;
-    onRunCode?: () => void;
     openTabs: FileItem[];
     activeTab: string | null;
     onTabClick: (file: FileItem) => void;
     onTabClose: (id: string) => void;
+    onRunCode?: () => void;
 }
 
 export default function EditorPane({
     file,
     onSave,
     onContentChange,
-    onRunCode,
     openTabs,
     activeTab,
     onTabClick,
     onTabClose,
+    onRunCode,
+
 }: EditorPaneProps) {
-    const editorRefs = useRef<Record<string, any>>({}); // ✅ store editors by tabId
+    const editorRefs = useRef<Record<string, any>>({});
 
     const handleEditorChange = (value: string | undefined, tabId: string) => {
         onContentChange(value || '');
-        if (openTabs.find(t => t.id === tabId)) {
-            openTabs.find(t => t.id === tabId)!.content = value || '';
-        }
+        const tab = openTabs.find(t => t.id === tabId);
+        if (tab) tab.content = value || '';
     };
 
     const handleEditorDidMount = (editor: any, monaco: Monaco, tabId: string) => {
@@ -67,10 +67,31 @@ export default function EditorPane({
         });
 
         // Run shortcut
-        if (onRunCode) {
-            editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyR, () => {
-                onRunCode();
+        editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyR, () => {
+            runCode(editor.getValue(), tabId);
+        });
+    };
+
+    const runCode = async (code: string, tabId: string) => {
+        try {
+            const res = await fetch("/api/runcode", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    code,
+                    language: openTabs.find(t => t.id === tabId)?.language || "javascript"
+                }),
             });
+            const data = await res.json();
+
+            // Send output to terminal
+            if (typeof window.executeInTerminal === 'function') {
+                window.executeInTerminal(data.output || "✅ Done (no output)");
+            }
+        } catch (err: any) {
+            if (typeof window.executeInTerminal === 'function') {
+                window.executeInTerminal("❌ Error: " + err.message);
+            }
         }
     };
 
@@ -97,7 +118,7 @@ export default function EditorPane({
                 ))}
             </div>
 
-            {/* Editors (all mounted, just hidden) */}
+            {/* Editors */}
             <div className="flex-1 relative">
                 {openTabs.map(tab => (
                     <div
@@ -135,7 +156,9 @@ export default function EditorPane({
                     Paste
                 </MenuItem>
                 <MenuSeparator />
-                {onRunCode && <MenuItem onClick={onRunCode}>Run Code</MenuItem>}
+                <MenuItem onClick={() => runCode(editorRefs.current[activeTab!]?.getValue() || '', activeTab!)}>
+                    Run Code
+                </MenuItem>
                 <MenuSeparator />
                 <MenuItem onClick={() => onSave(editorRefs.current[activeTab!]?.getValue() || '')}>
                     Save

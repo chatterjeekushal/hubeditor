@@ -1,6 +1,6 @@
 
 import { FiSave, FiFolder, FiFile, FiTerminal, FiSearch, FiGitBranch, FiSettings, FiPlay } from 'react-icons/fi';
-import { useEditor } from '../../lib/EditorContext';
+import { useEditor } from '@/lib/EditorContext';
 import { useState, useRef } from 'react';
 
 export default function Toolbar() {
@@ -13,6 +13,7 @@ export default function Toolbar() {
         toggleGitPanel,
         activeFile,
         isDirty,
+        runCode, // Changed from runcode to runCode
     } = useEditor();
 
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -72,8 +73,6 @@ export default function Toolbar() {
         }
 
         try {
-            // For now, we'll save the current content
-            // In a real implementation, you'd get the content from the editor
             const content = activeFile.content || '';
             saveFile(content);
         } catch (error) {
@@ -81,6 +80,7 @@ export default function Toolbar() {
         }
     };
 
+    // Use the runCode function from context instead of direct API call
     const handleRunCode = async () => {
         if (!activeFile) {
             console.warn('No active file to run');
@@ -92,56 +92,15 @@ export default function Toolbar() {
             const content = activeFile.content || '';
             const language = activeFile.language || 'javascript';
 
-            // Execute code based on language
-            switch (language) {
-                case 'javascript':
-                case 'typescript':
-                    await executeJavaScript(content);
-                    break;
-                case 'python':
-                    await executePython(content);
-                    break;
-                case 'html':
-                    await executeHTML(content);
-                    break;
-                default:
-                    console.log('Running code:', content);
-                    // For other languages, just log the content
-                    break;
-            }
+            // Use the runCode function from context
+            await runCode(content, language);
         } catch (error) {
             console.error('Failed to run code:', error);
+            if (typeof window.executeInTerminal === 'function') {
+                window.executeInTerminal(`❌ Error: ${error instanceof Error ? error.message : String(error)}`);
+            }
         } finally {
             setIsRunning(false);
-        }
-    };
-
-    const executeJavaScript = async (code: string) => {
-        try {
-            // Create a safe execution environment
-            const result = new Function(code)();
-            console.log('JavaScript execution result:', result);
-
-            // You could also send this to a backend service for execution
-            // or use a sandboxed environment
-
-        } catch (error) {
-            console.error('JavaScript execution error:', error);
-        }
-    };
-
-    const executePython = async (code: string) => {
-        // This would typically connect to a Python backend service
-        console.log('Python code to execute:', code);
-        console.log('Note: Python execution requires a backend service');
-    };
-
-    const executeHTML = async (html: string) => {
-        // Open HTML in a new window/tab
-        const newWindow = window.open('', '_blank');
-        if (newWindow) {
-            newWindow.document.write(html);
-            newWindow.document.close();
         }
     };
 
@@ -169,92 +128,102 @@ export default function Toolbar() {
     };
 
     return (
-        <div className="flex items-center gap-2 border border-red-500 p-2 bg-gray-800 border-b">
-            <div className="flex items-center gap-1">
-                <button
-                    onClick={handleNewFile}
-                    title="New File (Ctrl+N)"
-                    disabled={isLoading}
-                    className="p-2 text-gray-300 hover:bg-gray-700 rounded transition-colors disabled:opacity-50"
-                >
-                    <FiFile className="w-4 h-4" />
-                </button>
-                <button
-                    onClick={handleOpenFile}
-                    title="Open File (Ctrl+O)"
-                    disabled={isLoading}
-                    className="p-2 text-gray-300 hover:bg-gray-700 rounded transition-colors disabled:opacity-50"
-                >
-                    <FiFolder className="w-4 h-4" />
-                </button>
-                <button
-                    onClick={handleSaveFile}
-                    title="Save (Ctrl+S)"
-                    disabled={!activeFile || isLoading}
-                    className={`p-2 rounded transition-colors disabled:opacity-50 ${isDirty
-                        ? 'text-yellow-400 hover:bg-gray-700'
-                        : 'text-gray-300 hover:bg-gray-700'
-                        }`}
-                >
-                    <FiSave className="w-4 h-4" />
-                </button>
+        <div className="flex items-center justify-between px-3 py-2  border-b border-gray-600 bg-gray-700 shadow-sm w-full">
+            {/* Left section - File operations */}
+            <div className="flex items-center">
+                <div className="flex items-center bg-gray-800 rounded-md p-1 mr-3">
+                    <button
+                        onClick={handleNewFile}
+                        title="New File (Ctrl+N)"
+                        disabled={isLoading}
+                        className="flex items-center justify-center w-8 h-8 text-gray-300 hover:text-white hover:bg-gray-700 rounded transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        <FiFile className="w-4 h-4" />
+                    </button>
+                    <button
+                        onClick={handleOpenFile}
+                        title="Open File (Ctrl+O)"
+                        disabled={isLoading}
+                        className="flex items-center justify-center w-8 h-8 text-gray-300 hover:text-white hover:bg-gray-700 rounded transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        <FiFolder className="w-4 h-4" />
+                    </button>
+                    <button
+                        onClick={handleSaveFile}
+                        title="Save (Ctrl+S)"
+                        disabled={!activeFile || isLoading}
+                        className={`flex items-center justify-center w-8 h-8 rounded transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed ${isDirty
+                            ? 'text-yellow-400 hover:text-yellow-300 hover:bg-yellow-400/10'
+                            : 'text-gray-300 hover:text-white hover:bg-gray-700'
+                            }`}
+                    >
+                        <FiSave className="w-4 h-4" />
+                    </button>
+                </div>
+
+                {/* Run button - separate from file operations */}
+                <div className="flex items-center bg-gray-800 rounded-md p-1 mr-3">
+                    <button
+                        onClick={handleRunCode}
+                        title="Run Code (Ctrl+R)"
+                        disabled={!activeFile || isLoading || isRunning}
+                        className={`flex items-center justify-center w-8 h-8 rounded transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed ${isRunning
+                            ? 'text-green-400 hover:text-green-300 hover:bg-green-400/10 animate-pulse'
+                            : 'text-green-400 hover:text-green-300 hover:bg-green-400/10'
+                            }`}
+                    >
+                        <FiPlay className={`w-4 h-4 ${isRunning ? 'animate-spin' : ''}`} />
+                    </button>
+                </div>
+
+                {/* Active file indicator */}
+                {activeFile && (
+                    <div className="flex items-center text-sm text-gray-400 bg-gray-800 rounded px-3 py-1">
+                        <span className="truncate max-w-48">{activeFile.name}</span>
+                        {isDirty && (
+                            <span className="ml-2 w-2 h-2 bg-yellow-400 rounded-full animate-pulse"></span>
+                        )}
+                    </div>
+                )}
             </div>
 
-            <div className="w-px h-6 bg-gray-600" />
+            {/* Right section - Tools and settings */}
+            <div className="flex items-center">
+                <div className="flex items-center bg-gray-800 rounded-md p-1 mr-3">
+                    <button
+                        onClick={toggleSearch}
+                        title="Search (Ctrl+F)"
+                        className="flex items-center justify-center w-8 h-8 text-gray-300 hover:text-white hover:bg-gray-700 rounded transition-all duration-150"
+                    >
+                        <FiSearch className="w-4 h-4" />
+                    </button>
+                    <button
+                        onClick={toggleTerminal}
+                        title="Toggle Terminal"
+                        className="flex items-center justify-center w-8 h-8 text-gray-300 hover:text-white hover:bg-gray-700 rounded transition-all duration-150"
+                    >
+                        <FiTerminal className="w-4 h-4" />
+                    </button>
+                    <button
+                        onClick={toggleGitPanel}
+                        title="Git Panel"
+                        className="flex items-center justify-center w-8 h-8 text-gray-300 hover:text-white hover:bg-gray-700 rounded transition-all duration-150"
+                    >
+                        <FiGitBranch className="w-4 h-4" />
+                    </button>
+                </div>
 
-            <div className="flex items-center gap-1">
-                <button
-                    onClick={handleRunCode}
-                    title="Run Code (Ctrl+R)"
-                    disabled={!activeFile || isLoading || isRunning}
-                    className={`p-2 rounded transition-colors disabled:opacity-50 ${isRunning
-                        ? 'text-green-400 hover:bg-gray-700'
-                        : 'text-green-300 hover:bg-gray-700'
-                        }`}
-                >
-                    <FiPlay className="w-4 h-4" />
-                </button>
+                <div className="flex items-center bg-gray-800 rounded-md p-1">
+                    <button
+                        onClick={() => console.log('Settings')}
+                        title="Settings"
+                        className="flex items-center justify-center w-8 h-8 text-gray-300 hover:text-white hover:bg-gray-700 rounded transition-all duration-150"
+                    >
+                        <FiSettings className="w-4 h-4" />
+                    </button>
+                </div>
             </div>
 
-            <div className="w-px h-6 bg-gray-600" />
-
-            <div className="flex items-center gap-1">
-                <button
-                    onClick={toggleTerminal}
-                    title="Toggle Terminal"
-                    className="p-2 text-gray-300 hover:bg-gray-700 rounded transition-colors"
-                >
-                    <FiTerminal className="w-4 h-4" />
-                </button>
-                <button
-                    onClick={toggleSearch}
-                    title="Search (Ctrl+F)"
-                    className="p-2 text-gray-300 hover:bg-gray-700 rounded transition-colors"
-                >
-                    <FiSearch className="w-4 h-4" />
-                </button>
-                <button
-                    onClick={toggleGitPanel}
-                    title="Git Panel"
-                    className="p-2 text-gray-300 hover:bg-gray-700 rounded transition-colors"
-                >
-                    <FiGitBranch className="w-4 h-4" />
-                </button>
-            </div>
-
-            <div className="w-px h-6 bg-gray-600" />
-
-            <div className="flex items-center gap-1">
-                <button
-                    onClick={() => console.log('Settings')}
-                    title="Settings"
-                    className="p-2 text-gray-300 hover:bg-gray-700 rounded transition-colors"
-                >
-                    <FiSettings className="w-4 h-4" />
-                </button>
-            </div>
-
-            {/* Hidden file input for file selection */}
             <input
                 ref={fileInputRef}
                 type="file"

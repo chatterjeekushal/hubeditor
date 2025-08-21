@@ -1,70 +1,35 @@
 
-
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { Terminal } from '@xterm/xterm';
+import { FitAddon } from 'xterm-addon-fit';
 import 'xterm/css/xterm.css';
 
-const HOME = '~'; // Represent workspace directory root as ~
+const HOME = '~';
 
 function normalizePath(path: string): string {
     return path.replace(/\/+/g, '/').replace(/\/$/, '') || '/';
 }
 
-export default function TerminalPanel() {
+interface TerminalPanelProps {
+    onExecuteCode?: (code: string) => Promise<string>;
+}
+
+export default function TerminalPanel({ onExecuteCode }: TerminalPanelProps) {
     const terminalRef = useRef<HTMLDivElement>(null);
     const term = useRef<Terminal | null>(null);
+    const fitAddon = useRef<FitAddon | null>(null);
     const commandBuffer = useRef<string>('');
     const [currentPath, setCurrentPath] = useState<string>(HOME);
     const [isMinimized, setIsMinimized] = useState<boolean>(false);
     const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
     const [shouldAutoScroll, setShouldAutoScroll] = useState<boolean>(true);
-    const scrollTimeoutRef = useRef<NodeJS.Timeout>(null);
-    const scrollAnimationRef = useRef<number>(null);
 
-    // Smooth scroll easing function
-    const easeOutQuad = (t: number): number => t * (2 - t);
-
-    const smoothScrollToBottom = (): void => {
-        const viewport = terminalRef.current?.querySelector('.xterm-viewport') as HTMLElement;
-        if (!viewport) return;
-
-        const start = viewport.scrollTop;
-        const end = viewport.scrollHeight - viewport.clientHeight;
-
-        // Don't animate if already at bottom or very close
-        if (Math.abs(start - end) < 5) {
-            viewport.scrollTop = end;
-            return;
-        }
-
-        const duration = 200; // milliseconds
-        const startTime = performance.now();
-
-        const animateScroll = (currentTime: number): void => {
-            const elapsed = currentTime - startTime;
-            const progress = Math.min(elapsed / duration, 1);
-            const easedProgress = easeOutQuad(progress);
-            viewport.scrollTop = start + (end - start) * easedProgress;
-
-            if (progress < 1) {
-                scrollAnimationRef.current = requestAnimationFrame(animateScroll);
-            }
-        };
-
-        // Cancel any ongoing animation
-        if (scrollAnimationRef.current) {
-            cancelAnimationFrame(scrollAnimationRef.current);
-        }
-        scrollAnimationRef.current = requestAnimationFrame(animateScroll);
-    };
-
-    const handleScroll = (): void => {
-        const viewport = terminalRef.current?.querySelector('.xterm-viewport') as HTMLElement;
-        if (!viewport) return;
-
-        const isAtBottom = viewport.scrollHeight - viewport.clientHeight <= viewport.scrollTop + 10;
-        setShouldAutoScroll(isAtBottom);
+    const writeOutput = (message: string, type: 'info' | 'error' | 'output' = 'output') => {
+        const color = type === 'error' ? '31' : type === 'info' ? '33' : '37';
+        term.current?.write(`\r\n\x1b[${color}m${message.replace(/\n/g, '\r\n')}\x1b[0m\r\n`);
+        prompt();
+        scrollToBottomIfNeeded();
     };
 
     useEffect(() => {
@@ -80,97 +45,25 @@ export default function TerminalPanel() {
             lineHeight: 1.2,
             letterSpacing: 0.5,
             scrollback: 1000,
-            scrollSensitivity: 1,
             disableStdin: false,
             allowProposedApi: true,
         });
 
+        fitAddon.current = new FitAddon();
+        terminal.loadAddon(fitAddon.current);
         term.current = terminal;
         terminal.open(terminalRef.current!);
+        fitAddon.current.fit();
 
-        // Set up scroll event listener
         const terminalElement = terminalRef.current?.querySelector('.xterm-viewport');
         if (terminalElement) {
             terminalElement.addEventListener('scroll', handleScroll);
         }
 
-        const scrollToBottomIfNeeded = (): void => {
-            if (shouldAutoScroll) {
-                smoothScrollToBottom();
-            }
-        };
-
-        const prompt = (): void => {
-            terminal.write(`\r\n\x1b[1;32muser@devsphere\x1b[0m:\x1b[1;34m${currentPath}\x1b[0m$ `);
-            commandBuffer.current = '';
-            scrollToBottomIfNeeded();
-        };
-
-        const resolvePath = (cwd: string, target: string): string => {
-            if (target === '') return cwd;
-            if (target.startsWith('/')) {
-                return normalizePath(target === '/' ? HOME : target.replace(/^~?/, ''));
-            } else if (target === '~') {
-                return HOME;
-            } else if (target === '..') {
-                if (cwd === HOME) return HOME;
-                const parts = cwd.split('/').filter(Boolean);
-                parts.pop();
-                return parts.length ? '/' + parts.join('/') : HOME;
-            } else {
-                if (cwd === HOME) return normalizePath('/' + target);
-                else return normalizePath(cwd + '/' + target);
-            }
-        };
-
-        const executeCommand = async (inputCommand: string): Promise<void> => {
-            const trimmedCmd = inputCommand.trim();
-
-            // Handle 'cd' command locally
-            if (trimmedCmd.startsWith('cd ')) {
-                const targetDir = trimmedCmd.slice(3).trim();
-                const newPath = resolvePath(currentPath, targetDir);
-                setCurrentPath(newPath);
-                prompt();
-                return;
-            }
-
-            terminal.write(`\r\n\x1b[33mRunning: ${inputCommand}\x1b[0m\r\n`);
-
-            try {
-                const res = await fetch('/api/terminal', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        command: trimmedCmd,
-                        cwd: currentPath === HOME ? '' : currentPath
-                    }),
-                });
-
-                const data = await res.json();
-
-                if (data.stdout === '__CLEAR_SCREEN__') {
-                    terminal.clear();
-                    prompt();
-                    return;
-                }
-
-                if (data.stdout) terminal.write(data.stdout.replace(/\n/g, '\r\n'));
-                if (data.stderr) terminal.write(`\x1b[31m${data.stderr.replace(/\n/g, '\r\n')}\x1b[0m`);
-                if (data.error) terminal.write(`\x1b[31mError: ${data.error}\x1b[0m\r\n`);
-            } catch (err: any) {
-                terminal.write(`\x1b[31mError: ${err.message}\x1b[0m\r\n`);
-            }
-
-            prompt();
-        };
-
-        // Initial terminal setup
         terminal.writeln('\x1b[1;36mWelcome to DevSphere Terminal 🖥️\x1b[0m');
-        terminal.writeln('\x1b[2mType a command and press Enter to execute\x1b[0m');
+        terminal.writeln('\x1b[2mType commands or run code from the editor\x1b[0m');
         prompt();
 
-        // Handle key input
         terminal.onKey(({ key, domEvent }) => {
             const ev = domEvent;
             const printable = !ev.altKey && !ev.ctrlKey && !ev.metaKey;
@@ -194,28 +87,145 @@ export default function TerminalPanel() {
             scrollToBottomIfNeeded();
         });
 
-        // Cleanup function
+        // Expose terminal write function globally
+        (window as any).executeInTerminal = writeOutput;
+
+        const handleResize = () => {
+            fitAddon.current?.fit();
+            scrollToBottomIfNeeded();
+        };
+        window.addEventListener('resize', handleResize);
+
         return () => {
+            window.removeEventListener('resize', handleResize);
             const terminalElement = terminalRef.current?.querySelector('.xterm-viewport');
             if (terminalElement) {
                 terminalElement.removeEventListener('scroll', handleScroll);
             }
-            if (scrollTimeoutRef.current) {
-                clearTimeout(scrollTimeoutRef.current);
-            }
-            if (scrollAnimationRef.current) {
-                cancelAnimationFrame(scrollAnimationRef.current);
-            }
             terminal.dispose();
+            delete (window as any).executeInTerminal;
+            delete (window as any).executeCodeInTerminal;
         };
-    }, [currentPath]);
+    }, []);
+
+    // Code execution useEffect
+    useEffect(() => {
+        if (!term.current || !onExecuteCode) return;
+
+        const executeCode = async (code: string) => {
+            writeOutput('Running code...', 'info');
+            try {
+                const result = await onExecuteCode(code);
+                writeOutput(result, 'output');
+            } catch (err: any) {
+                writeOutput(`Error: ${err.message}`, 'error');
+            }
+        };
+
+        // Expose this function globally
+        (window as any).executeCodeInTerminal = executeCode;
+
+        return () => {
+            // Clean up
+            delete (window as any).executeCodeInTerminal;
+        };
+    }, [onExecuteCode]);
+
+    const prompt = (): void => {
+        term.current?.write(`\r\n\x1b[1;32muser@devsphere\x1b[0m:\x1b[1;34m${currentPath}\x1b[0m$ `);
+        commandBuffer.current = '';
+        scrollToBottomIfNeeded();
+    };
+
+    const resolvePath = (cwd: string, target: string): string => {
+        if (target === '') return cwd;
+        if (target.startsWith('/')) {
+            return normalizePath(target === '/' ? HOME : target.replace(/^~?/, ''));
+        } else if (target === '~') {
+            return HOME;
+        } else if (target === '..') {
+            if (cwd === HOME) return HOME;
+            const parts = cwd.split('/').filter(Boolean);
+            parts.pop();
+            return parts.length ? '/' + parts.join('/') : HOME;
+        } else {
+            if (cwd === HOME) return normalizePath('/' + target);
+            else return normalizePath(cwd + '/' + target);
+        }
+    };
+
+    const executeCommand = async (inputCommand: string): Promise<void> => {
+        const trimmedCmd = inputCommand.trim();
+        const terminal = term.current;
+
+        if (!terminal) return;
+
+        if (trimmedCmd.startsWith('cd ')) {
+            const targetDir = trimmedCmd.slice(3).trim();
+            const newPath = resolvePath(currentPath, targetDir);
+            setCurrentPath(newPath);
+            prompt();
+            return;
+        }
+
+        terminal.write(`\r\n\x1b[33mRunning: ${inputCommand}\x1b[0m\r\n`);
+
+        try {
+            const res = await fetch('/api/terminal', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    command: trimmedCmd,
+                    cwd: currentPath === HOME ? '' : currentPath
+                }),
+            });
+
+            const data = await res.json();
+
+            if (data.stdout === '__CLEAR_SCREEN__') {
+                terminal.clear();
+                prompt();
+                return;
+            }
+
+            if (data.stdout) terminal.write(data.stdout.replace(/\n/g, '\r\n'));
+            if (data.stderr) terminal.write(`\x1b[31m${data.stderr.replace(/\n/g, '\r\n')}\x1b[0m`);
+            if (data.error) terminal.write(`\x1b[31mError: ${data.error}\x1b[0m\r\n`);
+        } catch (err: any) {
+            terminal.write(`\x1b[31mError: ${err.message}\x1b[0m\r\n`);
+        }
+
+        prompt();
+    };
+
+    const scrollToBottomIfNeeded = (): void => {
+        if (shouldAutoScroll) {
+            setTimeout(() => {
+                term.current?.scrollToBottom();
+            }, 10);
+        }
+    };
+
+    const handleScroll = (): void => {
+        const viewport = terminalRef.current?.querySelector('.xterm-viewport') as HTMLElement;
+        if (!viewport) return;
+
+        const isAtBottom = viewport.scrollHeight - viewport.clientHeight <= viewport.scrollTop + 10;
+        setShouldAutoScroll(isAtBottom);
+    };
 
     const toggleMinimize = (): void => {
         setIsMinimized(!isMinimized);
+        setTimeout(() => {
+            fitAddon.current?.fit();
+        }, 10);
     };
 
     const toggleFullscreen = (): void => {
         setIsFullscreen(!isFullscreen);
+        setTimeout(() => {
+            fitAddon.current?.fit();
+        }, 10);
     };
 
     return (

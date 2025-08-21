@@ -1,13 +1,14 @@
 // File types
-export interface FileItem {
+export type FileItem = {
     id: string;
     name: string;
-    path: string;
-    type: 'file' | 'folder';
-    language?: string;
+    type: 'file' | 'folder' | 'terminal';  // Add 'terminal' to the union type
     content?: string;
+    language?: string;
+    path?: string;
+    isDirty?: boolean;
     children?: FileItem[];
-}
+};
 
 // Cursor position
 export interface CursorPosition {

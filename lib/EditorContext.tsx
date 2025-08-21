@@ -27,6 +27,7 @@ export interface EditorContextType {
     toggleSearch: () => void;
     toggleGitPanel: () => void;
     toggleDebugPanel: () => void;
+    runCode: (code: string, language: string) => Promise<void>;
     fileType: string;
     encoding: string;
     lineEnding: string;
@@ -71,6 +72,25 @@ export function EditorProvider({ children }: EditorProviderProps) {
         setIsDirty(false);
     };
 
+    const runCode = async (code: string, language: string) => {
+        try {
+            const res = await fetch("/api/runcode", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ code, language }),
+            });
+            const data = await res.json();
+            // Send output to terminal
+            if (typeof window.executeInTerminal === 'function') {
+                window.executeInTerminal(data.output || "✅ Done (no output)");
+            }
+        } catch (err: any) {
+            if (typeof window.executeInTerminal === 'function') {
+                window.executeInTerminal("❌ Error: " + err.message);
+            }
+        }
+    };
+
     const newFile = () => {
         const newFile: FileItem = {
             id: Date.now().toString(),
@@ -99,6 +119,7 @@ export function EditorProvider({ children }: EditorProviderProps) {
         saveFile,
         openFile,
         newFile,
+        runCode,
         toggleTerminal: () => togglePanel('terminal'),
         toggleSearch: () => togglePanel('search'),
         toggleGitPanel: () => togglePanel('git'),
